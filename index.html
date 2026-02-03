@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Knowledge Copilot Dashboard</title>
+
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#0f1a2e;
+      --card2:#0d172a;
+      --text:#eaf0ff;
+      --muted:#a9b6d6;
+      --line:#1c2b4a;
+      --shadow: 0 10px 30px rgba(0,0,0,.25);
+      --radius:16px;
+      --ok:#57d39c;
+      --bad:#ff6b6b;
+      --warn:#ffd166;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial;
+      background: radial-gradient(1200px 600px at 80% -10%, rgba(110,168,254,.25), transparent),
+                  radial-gradient(900px 500px at 10% -10%, rgba(87,211,156,.18), transparent),
+                  var(--bg);
+      color:var(--text);
+    }
+    .container{max-width:1200px;margin:0 auto;padding:24px}
+    .topbar{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:18px 20px;border:1px solid var(--line);background:rgba(15,26,46,.7);
+      border-radius: var(--radius); box-shadow: var(--shadow); backdrop-filter: blur(10px);
+    }
+    .title h1{margin:0;font-size:22px}
+    .title p{margin:6px 0 0;color:var(--muted);font-size:13px}
+    .filters{display:flex;gap:10px;flex-wrap:wrap}
+    .filters select,.filters input{
+      background: var(--card2); color: var(--text);
+      border:1px solid var(--line); border-radius:12px;
+      padding:10px 12px; outline:none; min-width: 160px;
+    }
+    .filters button{
+      background: linear-gradient(135deg, rgba(110,168,254,.9), rgba(87,211,156,.85));
+      color:#07101e; border:0; border-radius:12px; padding:10px 14px; cursor:pointer;
+      font-weight:800;
+    }
+    .grid{display:grid;gap:12px;margin-top:14px}
+    .kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+    .kpi,.panel{
+      background: rgba(15,26,46,.75);
+      border:1px solid var(--line);
+      border-radius: var(--radius);
+      padding:14px; box-shadow: var(--shadow); backdrop-filter: blur(10px);
+    }
+    .kpi .label{color:var(--muted);font-size:12px}
+    .kpi .value{font-size:22px;font-weight:900;margin-top:8px}
+    .kpi .sub{color:var(--muted);font-size:12px;margin-top:6px}
+    .panels{grid-template-columns: 2fr 1fr}
+    .panel h2{margin:0 0 10px;font-size:15px}
+    .tableWrap{margin-top:12px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top}
+    th{color:var(--muted);font-weight:800;text-align:left}
+    .pill{
+      display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;border:1px solid var(--line);
+      background: rgba(13,23,42,.8);
+    }
+    .ok{border-color:rgba(87,211,156,.5);color:var(--ok)}
+    .nf{border-color:rgba(255,107,107,.5);color:var(--bad)}
+    .es{border-color:rgba(255,209,102,.5);color:var(--warn)}
+    .muted{color:var(--muted)}
+    .footer{margin-top:14px;color:var(--muted);font-size:12px;text-align:center}
+    .error{color:var(--bad);font-size:13px;margin-top:10px}
+
+    @media (max-width:1100px){
+      .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .panels{grid-template-columns:1fr}
+      .filters select,.filters input{min-width: 140px;}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="title">
+        <h1>Knowledge Copilot – Dashboard</h1>
+        <p class="muted">Standalone HTML (GitHub Pages) pulling data from n8n APIs</p>
+      </div>
+
+      <div class="filters">
+        <select id="days">
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+
+        <input id="dept" placeholder="Department filter (optional)" />
+        <select id="channel">
+          <option value="">All channels</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="teams">Teams</option>
+          <option value="web">Web</option>
+        </select>
+
+        <input id="token" placeholder="Token (optional)" />
+        <button id="refresh">Refresh</button>
+      </div>
+    </div>
+
+    <div id="msg" class="error"></div>
+
+    <div class="grid kpis">
+      <div class="kpi"><div class="label">Total Requests</div><div class="value" id="k_total">—</div><div class="sub" id="k_total_sub">—</div></div>
+      <div class="kpi"><div class="label">Active Users</div><div class="value" id="k_users">—</div><div class="sub">Unique users</div></div>
+      <div class="kpi"><div class="label">Answer Rate</div><div class="value" id="k_answer">—</div><div class="sub">Answered / Total</div></div>
+      <div class="kpi"><div class="label">Not Found</div><div class="value" id="k_nf">—</div><div class="sub">Knowledge gaps</div></div>
+      <div class="kpi"><div class="label">Avg Response Time</div><div class="value" id="k_rt">—</div><div class="sub">ms</div></div>
+    </div>
+
+    <div class="grid panels">
+      <div class="panel">
+        <h2>Trends</h2>
+        <canvas id="trend" height="90"></canvas>
+      </div>
+
+      <div class="panel">
+        <h2>Top Gaps (Not Found)</h2>
+        <div id="gaps" class="muted">—</div>
+      </div>
+    </div>
+
+    <div class="panel tableWrap">
+      <h2>Latest Requests</h2>
+      <div class="muted" style="margin-bottom:10px;">Latest 50 requests (with best match)</div>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Department</th>
+              <th>Category</th>
+              <th>User Query</th>
+              <th>Status</th>
+              <th>Best Match</th>
+            </tr>
+          </thead>
+          <tbody id="logsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">Powered by n8n APIs • Hosted on GitHub Pages</div>
+  </div>
+
+<script>
+  // =========================
+  // IMPORTANT: SET THIS
+  // =========================
+  // Example:
+  // const API_BASE = "https://YOUR-N8N-DOMAIN";
+  // If your n8n webhook is already public and includes /webhook/ in the path, keep it as below.
+  const API_BASE = "https://YOUR-N8N-DOMAIN"; // <-- CHANGE ME
+
+  // Paths (change if your webhook paths differ)
+  const KPI_PATH  = "/webhook/kc/api/kpi";
+  const LOGS_PATH = "/webhook/kc/api/logs";
+
+  let chart;
+
+  const qs = (id) => document.getElementById(id);
+  const esc = (s) => (s ?? "").toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const fmtPct = (x) => (x * 100).toFixed(1) + "%";
+
+  function statusPill(st){
+    const s=(st||"").toLowerCase();
+    if(s==="answered") return `<span class="pill ok">answered</span>`;
+    if(s==="not_found") return `<span class="pill nf">not_found</span>`;
+    if(s==="escalated") return `<span class="pill es">escalated</span>`;
+    if(s==="error") return `<span class="pill nf">error</span>`;
+    return `<span class="pill">${esc(st||"")}</span>`;
+  }
+
+  function setMsg(text){
+    qs("msg").textContent = text || "";
+  }
+
+  async function fetchJson(url){
+    const res = await fetch(url, { method: "GET" });
+    if(!res.ok){
+      const t = await res.text().catch(()=> "");
+      throw new Error(`HTTP ${res.status} from ${url}\n${t}`);
+    }
+    return res.json();
+  }
+
+  async function load(){
+    setMsg("");
+
+    const days = qs("days").value;
+    const dept = qs("dept").value.trim();
+    const channel = qs("channel").value;
+    const token = qs("token").value.trim();
+
+    const params = new URLSearchParams();
+    params.set("days", days);
+    if(dept) params.set("dept", dept);
+    if(channel) params.set("channel", channel);
+    if(token) params.set("token", token); // optional simple protection
+
+    const kpiUrl = `${API_BASE}${KPI_PATH}?${params.toString()}`;
+    const logsUrl = `${API_BASE}${LOGS_PATH}?${params.toString()}`;
+
+    let kpi, logs;
+    try{
+      [kpi, logs] = await Promise.all([fetchJson(kpiUrl), fetchJson(logsUrl)]);
+    }catch(err){
+      console.error(err);
+      setMsg("Could not load data. Check API_BASE, paths, token, and CORS on n8n.");
+      return;
+    }
+
+    // Expect KPI JSON shape:
+    // {
+    //   totals: { total_requests, active_users, answer_rate, not_found_rate, avg_response_time_ms },
+    //   trend: [{day, total_requests, answer_rate, not_found_rate}],
+    //   top_gaps: [{user_query, cnt}]
+    // }
+
+    qs("k_total").textContent = (kpi.totals?.total_requests ?? 0).toLocaleString();
+    qs("k_total_sub").textContent = `Last ${days} days` + (dept ? ` • ${dept}` : "") + (channel ? ` • ${channel}` : "");
+    qs("k_users").textContent = (kpi.totals?.active_users ?? 0).toLocaleString();
+    qs("k_answer").textContent = fmtPct(kpi.totals?.answer_rate ?? 0);
+    qs("k_nf").textContent = fmtPct(kpi.totals?.not_found_rate ?? 0);
+    qs("k_rt").textContent = Math.round(kpi.totals?.avg_response_time_ms ?? 0).toLocaleString();
+
+    // Gaps
+    const gapsHtml = (kpi.top_gaps || []).slice(0, 10).map(g =>
+      `• ${esc(g.user_query)} <span class="muted">(${g.cnt})</span>`
+    ).join("<br/>") || "—";
+    qs("gaps").innerHTML = gapsHtml;
+
+    // Trend chart
+    const labels = (kpi.trend || []).map(r => r.day);
+    const reqs   = (kpi.trend || []).map(r => r.total_requests);
+    const ans    = (kpi.trend || []).map(r => Math.round((r.answer_rate || 0) * 1000) / 10);
+    const nf     = (kpi.trend || []).map(r => Math.round((r.not_found_rate || 0) * 1000) / 10);
+
+    const ctx = document.getElementById("trend");
+    if(chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Requests", data: reqs, yAxisID: "y" },
+          { label: "Answer %", data: ans, yAxisID: "y1" },
+          { label: "Not Found %", data: nf, yAxisID: "y1" }
+        ]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y:  { beginAtZero: true, title: { display: true, text: "Requests" } },
+          y1: { beginAtZero: true, position: "right", title: { display: true, text: "%" } }
+        }
+      }
+    });
+
+    // Logs table (expect array)
+    const rowsHtml = (logs || []).slice(0, 50).map(r => `
+      <tr>
+        <td class="muted">${esc(r.created_at)}</td>
+        <td>${esc(r.department || "-")}</td>
+        <td>${esc(r.category_filter || "-")}</td>
+        <td>${esc(r.user_query || "")}</td>
+        <td>${statusPill(r.answer_status)}</td>
+        <td class="muted">${esc(r.top_result_id || "")}${r.top_result_name ? " • " + esc(r.top_result_name) : ""}</td>
+      </tr>
+    `).join("");
+
+    qs("logsBody").innerHTML = rowsHtml || `<tr><td colspan="6" class="muted">No data</td></tr>`;
+  }
+
+  qs("refresh").addEventListener("click", load);
+  load();
+</script>
+</body>
+</html>
