@@ -2141,19 +2141,43 @@ input,select,textarea,button{font-size:16px;}
       <select class="fld" id="schEditDate" style="flex:1;min-width:130px;">
         <option value="">-- Select Date --</option>
       </select>
-      <div style="flex:1;min-width:140px;">
-        <input class="fld" id="schEditShift" list="schEditShiftList" placeholder="Shift (e.g. 09:00-16:00 or OFF)" style="width:100%;">
-        <datalist id="schEditShiftList">
-          <option>09:00-16:00</option><option>10:00-17:00</option><option>11:00-18:00</option>
-          <option>12:00-19:00</option><option>13:00-20:00</option><option>14:00-21:00</option>
-          <option>15:00-22:00</option><option>16:00-23:00</option><option>17:00-00:00</option>
-          <option>18:00-01:00</option><option>18:30-01:30</option><option>19:00-02:00</option>
-          <option>19:30-02:30</option><option>20:00-03:00</option><option>21:00-04:00</option>
-          <option>M 02:00-09:00</option><option>C 02:00-09:00</option>
-          <option>OFF</option><option>Leave</option><option>P-Leave</option>
-          <option>Sick</option><option>Holiday</option>
-        </datalist>
-      </div>
+      <select class="fld" id="schEditShift" style="flex:1;min-width:140px;">
+        <option value="">-- Select New Shift --</option>
+        <optgroup label="Morning">
+          <option>08:00-15:00</option>
+          <option>09:00-15:00</option>
+          <option>09:00-16:00</option>
+          <option>10:00-17:00</option>
+          <option>11:00-18:00</option>
+          <option>12:00-19:00</option>
+        </optgroup>
+        <optgroup label="Afternoon / Evening">
+          <option>13:30-02:30</option>
+          <option>15:00-02:00</option>
+          <option>15:30-02:30</option>
+          <option>16:00-23:00</option>
+          <option>17:00-00:00</option>
+          <option>18:00-01:00</option>
+          <option>18:30-01:30</option>
+          <option>19:00-00:00</option>
+          <option>19:00-02:00</option>
+          <option>19:30-02:30</option>
+          <option>20:00-01:00</option>
+          <option>20:00-03:00</option>
+        </optgroup>
+        <optgroup label="Night / Early Morning">
+          <option>M 02:00-09:00</option>
+          <option>C 02:00-09:00</option>
+          <option>C 02:00-10:00</option>
+        </optgroup>
+        <optgroup label="Status">
+          <option>OFF</option>
+          <option>Leave</option>
+          <option>P-Leave</option>
+          <option>Sick</option>
+          <option>Holiday</option>
+        </optgroup>
+      </select>
     </div>
     <button class="btn btn-navy" onclick="wfmSaveShift()" style="margin-bottom:14px;">💾 Save Change &amp; Notify Agent</button>
     <div id="schEditFeedback" style="margin-bottom:12px;"></div>
@@ -4654,8 +4678,20 @@ function schEditPrefill(agentId,date,currentShift){
     dSel.value=date;
   }
 
-  // Free-text input — just set value directly (any shift works)
-  if(sSel) sSel.value=currentShift;
+  // Set shift — if current shift isn't in dropdown, add it temporarily
+  if(sSel){
+    var shiftFound=false;
+    for(var j=0;j<sSel.options.length;j++){
+      if(sSel.options[j].value===currentShift){shiftFound=true;break;}
+    }
+    if(!shiftFound&&currentShift){
+      var sOpt=document.createElement('option');
+      sOpt.value=currentShift;
+      sOpt.textContent=currentShift+' (current)';
+      sSel.insertBefore(sOpt,sSel.options[1]);
+    }
+    sSel.value=currentShift;
+  }
 
   // Scroll to top so user can see the dropdowns
   var pg=document.getElementById('pg-sch-edit');
@@ -4682,20 +4718,17 @@ function wfmSaveShift(){
   var agent=AGENTS.find(function(a){return a.id===agentId;});
   if(!agent){return;}
   var idx=DATES.indexOf(date);
-  if(idx<0){
-    if(fb) fb.innerHTML='<div style="background:var(--rbg);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--red);">❌ Date not in current schedule range</div>';
-    return;
-  }
-  var oldShift=agent.sch[idx]||'OFF';
-  if(oldShift===shift){
+  // idx<0 means date is outside current loaded schedule — still allow API save
+  var oldShift=idx>=0?(agent.sch[idx]||'OFF'):'(previous period)';
+  if(oldShift===shift&&idx>=0){
     if(fb) fb.innerHTML='<div style="background:var(--abg);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--amber);">⚠️ No change — shift is already '+shift+'</div>';
     return;
   }
 
   if(fb) fb.innerHTML='<div style="background:rgba(13,92,166,.06);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--navy);">⏳ Saving…</div>';
 
-  // Update local AGENTS immediately
-  agent.sch[idx]=shift;
+  // Update local AGENTS only if date is in current loaded range
+  if(idx>=0) agent.sch[idx]=shift;
 
   // Push to Sheets via updateShift action
   fetch(API,{method:'POST',body:JSON.stringify({
