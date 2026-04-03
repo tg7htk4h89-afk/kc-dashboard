@@ -2131,7 +2131,7 @@ input,select,textarea,button{font-size:16px;}
   <div class="pg" id="pg-sch-edit">
     <div class="sh">✏️ Edit Schedule</div>
     <div style="background:rgba(13,92,166,.06);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;margin-bottom:12px;font-size:12px;color:var(--navy);">
-      🔒 WFM &amp; Admin only — changes reflect immediately for all users and send agent notifications
+      🔒 Management only — changes reflect immediately for all users and send agent notifications
     </div>
     <!-- Filters -->
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
@@ -2141,16 +2141,19 @@ input,select,textarea,button{font-size:16px;}
       <select class="fld" id="schEditDate" style="flex:1;min-width:130px;">
         <option value="">-- Select Date --</option>
       </select>
-      <select class="fld" id="schEditShift" style="flex:1;min-width:140px;">
-        <option value="">-- New Shift --</option>
-        <option>09:00-16:00</option><option>10:00-17:00</option><option>11:00-18:00</option>
-        <option>12:00-19:00</option><option>13:00-20:00</option><option>14:00-21:00</option>
-        <option>15:00-22:00</option><option>16:00-23:00</option><option>17:00-00:00</option>
-        <option>18:00-01:00</option><option>18:30-01:30</option><option>19:00-02:00</option>
-        <option>19:30-02:30</option><option>20:00-03:00</option><option>21:00-04:00</option>
-        <option>M 02:00-09:00</option><option>C 02:00-09:00</option>
-        <option>OFF</option><option>Leave</option><option>P-Leave</option><option>Sick</option>
-      </select>
+      <div style="flex:1;min-width:140px;">
+        <input class="fld" id="schEditShift" list="schEditShiftList" placeholder="Shift (e.g. 09:00-16:00 or OFF)" style="width:100%;">
+        <datalist id="schEditShiftList">
+          <option>09:00-16:00</option><option>10:00-17:00</option><option>11:00-18:00</option>
+          <option>12:00-19:00</option><option>13:00-20:00</option><option>14:00-21:00</option>
+          <option>15:00-22:00</option><option>16:00-23:00</option><option>17:00-00:00</option>
+          <option>18:00-01:00</option><option>18:30-01:30</option><option>19:00-02:00</option>
+          <option>19:30-02:30</option><option>20:00-03:00</option><option>21:00-04:00</option>
+          <option>M 02:00-09:00</option><option>C 02:00-09:00</option>
+          <option>OFF</option><option>Leave</option><option>P-Leave</option>
+          <option>Sick</option><option>Holiday</option>
+        </datalist>
+      </div>
     </div>
     <button class="btn btn-navy" onclick="wfmSaveShift()" style="margin-bottom:14px;">💾 Save Change &amp; Notify Agent</button>
     <div id="schEditFeedback" style="margin-bottom:12px;"></div>
@@ -4557,8 +4560,8 @@ function buildSchGrid(){
 var _schEditChanges=[];   // local log of changes in this session
 
 function renderSchEdit(){
-  if(!me||(me.access!=='wfm'&&me.access!=='admin'&&me.loginRole!=='management'&&me.loginRole!=='wfm')){
-    sp_showToast('WFM or Admin access required','err'); return;
+  if(!me||!isManagementUser(me)){
+    sp_showToast('Management access required','err'); return;
   }
   // Populate agent dropdown
   var aSel=document.getElementById('schEditAgent');
@@ -4633,11 +4636,37 @@ function schEditPrefill(agentId,date,currentShift){
   var dSel=document.getElementById('schEditDate');
   var sSel=document.getElementById('schEditShift');
   if(aSel) aSel.value=agentId;
-  if(dSel) dSel.value=date;
+
+  // If date not in dropdown options, add it temporarily
+  if(dSel){
+    var found=false;
+    for(var i=0;i<dSel.options.length;i++){
+      if(dSel.options[i].value===date){found=true;break;}
+    }
+    if(!found&&date){
+      var opt=document.createElement('option');
+      opt.value=date;
+      var months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var p=date.split('-');
+      opt.textContent=parseInt(p[2])+' '+months[parseInt(p[1])-1]+' '+p[0];
+      dSel.appendChild(opt);
+    }
+    dSel.value=date;
+  }
+
+  // Free-text input — just set value directly (any shift works)
   if(sSel) sSel.value=currentShift;
-  // Scroll to top of page
+
+  // Scroll to top so user can see the dropdowns
+  var pg=document.getElementById('pg-sch-edit');
+  if(pg) pg.scrollTop=0;
   var uContent=document.getElementById('u-content');
-  if(uContent) uContent.scrollTop=0; else window.scrollTo(0,0);
+  if(uContent) uContent.scrollTop=0;
+  else window.scrollTo(0,0);
+
+  // Show feedback to confirm prefill worked
+  var fb=document.getElementById('schEditFeedback');
+  if(fb) fb.innerHTML='<div style="background:rgba(13,92,166,.06);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--navy);">✏️ Editing '+date+' — current shift: <strong>'+currentShift+'</strong> — change below and save</div>';
 }
 
 function wfmSaveShift(){
@@ -7446,7 +7475,7 @@ function uBuildNav(){
   if(!nav||!me) return;
   nav.innerHTML='';
   var isMgr=isManagementUser(me);
-  var isWfm=(me.access==='wfm'||me.access==='admin'||me.loginRole==='wfm');
+  var isWfm=(me.access==='wfm'||me.access==='admin'||me.loginRole==='wfm'||me.access==='management'||me.loginRole==='management');
   var tabs=isMgr
     ? [
         {id:'home',ic:'🏠',lb:'Home'},
