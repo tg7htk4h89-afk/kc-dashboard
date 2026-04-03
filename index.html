@@ -3873,6 +3873,9 @@ function startApp(){
   var hl=document.getElementById('hub-login');if(hl)hl.classList.add('hidden');
   document.getElementById('u-app').classList.add('visible');
   document.getElementById('u-bnav').classList.add('visible');
+  // Show u-home immediately so loading spinner has somewhere to render
+  var uHome=document.getElementById('u-home');
+  if(uHome){uHome.classList.add('on');uHome.style.display='block';}
 
   // Set topbar user info
   var av=document.getElementById('u-av');
@@ -6691,17 +6694,38 @@ function renderUnifiedHome(){
   try{
   if(!me) return;
 
-  // ── If AGENTS not loaded yet, show loading state and retry ──
+  // ── If AGENTS not loaded yet, show loading state and trigger fetch ──
   if(!AGENTS||!AGENTS.length){
     var uhome=document.getElementById('u-home');
-    if(uhome&&uhome.classList.contains('on')){
-      uhome.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;">'
-        +'<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;"></div>'
-        +'<div style="color:rgba(255,255,255,.7);font-size:14px;font-weight:600;">Loading portal data…</div>'
+    // Show spinner regardless of .on class — don't let the race condition cause blank screen
+    if(uhome){
+      uhome.style.display='block'; // ensure visible
+      uhome.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:16px;">'
+        +'<div style="width:44px;height:44px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;"></div>'
+        +'<div style="color:rgba(255,255,255,.7);font-size:14px;font-weight:600;letter-spacing:-.2px;">Loading…</div>'
         +'</div>';
-      // Retry after 2s
-      setTimeout(function(){if(AGENTS&&AGENTS.length)renderUnifiedHome();},2000);
     }
+    // Trigger a fresh API pull immediately, then keep retrying
+    if(typeof apiPull==='function') apiPull();
+    var _homeRetry=setInterval(function(){
+      if(AGENTS&&AGENTS.length){
+        clearInterval(_homeRetry);
+        renderUnifiedHome();
+      }
+    },800);
+    // Give up after 15s and show error
+    setTimeout(function(){
+      clearInterval(_homeRetry);
+      if(!AGENTS||!AGENTS.length){
+        var uh=document.getElementById('u-home');
+        if(uh) uh.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:12px;padding:24px;">'
+          +'<div style="font-size:32px;">⚠️</div>'
+          +'<div style="color:rgba(255,255,255,.9);font-size:15px;font-weight:700;">Connection issue</div>'
+          +'<div style="color:rgba(255,255,255,.6);font-size:13px;text-align:center;">Could not load portal data. Check your connection.</div>'
+          +'<button onclick="apiPull();renderUnifiedHome();" style="margin-top:8px;padding:10px 24px;background:rgba(255,255,255,.15);color:#fff;border:1.5px solid rgba(255,255,255,.3);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">🔄 Retry</button>'
+          +'</div>';
+      }
+    },15000);
     return;
   }
 
