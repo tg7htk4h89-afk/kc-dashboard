@@ -1046,6 +1046,7 @@ body{background:#0a3d7a;}
   animation:lbUp .5s cubic-bezier(.34,1.1,.64,1) both;
 }
 @keyframes lbUp{from{opacity:0;transform:translateY(32px);}to{opacity:1;transform:translateY(0);}}
+@keyframes spin{to{transform:rotate(360deg);}}
 
 .lhdr{
   padding:32px 28px 26px;text-align:center;
@@ -2529,17 +2530,21 @@ var AVC=['#0D5CA6','#1d4ed8','#065f46','#6b21a8','#92400e','#991b1b','#0d5c63','
 var SK='kib_v11';
 
 // ══════════════════════════════════════════════════════════
-//  KIB WFM PORTAL — n8n API Configuration
-//  Paste your n8n webhook URLs below after importing workflows
+//  KIB WFM PORTAL — API Configuration
+//  Paste your n8n webhook URLs below after importing workflows.
+//  Until n8n is live, the portal uses GAS automatically.
 // ══════════════════════════════════════════════════════════
 var N8N_URL_GET    = 'YOUR_N8N_GET_WEBHOOK_URL_HERE';   // GET  /kib-wfm
 var N8N_URL_POST   = 'YOUR_N8N_POST_WEBHOOK_URL_HERE';  // POST /kib-wfm
 var N8N_URL_NOTIFY = 'YOUR_N8N_NOTIFY_WEBHOOK_URL_HERE';// POST /kib-notify
-// ── Pushbullet Token (for direct portal notifications) ──
+// ── Pushbullet Token ──
 var PUSHBULLET_TOKEN = '';
-// ── API convenience vars (used by all fetch calls) ──
-var API = N8N_URL_POST;   // all POST actions
-var API_GET = N8N_URL_GET; // getAll reads
+// ── GAS fallback (always works while n8n is being set up) ──
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyWcUuqWo1c2lVdJ5LMYhNZ04u54pcRUaYbtDGI0gIYQwYQ9S-zZzM4JRow-Tw0QtaSFg/exec';
+// ── Smart API selection: use n8n if URLs are configured, else GAS ──
+function _isN8nReady(url){ return url && url.indexOf('YOUR_')<0 && url.indexOf('http')===0; }
+var API     = _isN8nReady(N8N_URL_POST) ? N8N_URL_POST : GAS_URL;
+var API_GET = _isN8nReady(N8N_URL_GET)  ? N8N_URL_GET  : GAS_URL;
 var me=null,pendEmp=null,selShift=null,selSlot=null,selDur=30,tmFilter='',selVoicemail=false;
 var clkInt=null,syncInt=null,tmrInt=null,toastTO=null,notifs=[];
 
@@ -6595,6 +6600,21 @@ function _uSpTabOn(id){
 function renderUnifiedHome(){
   try{
   if(!me) return;
+
+  // ── If AGENTS not loaded yet, show loading state and retry ──
+  if(!AGENTS||!AGENTS.length){
+    var uhome=document.getElementById('u-home');
+    if(uhome&&uhome.classList.contains('on')){
+      uhome.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;">'
+        +'<div style="width:40px;height:40px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite;"></div>'
+        +'<div style="color:rgba(255,255,255,.7);font-size:14px;font-weight:600;">Loading portal data…</div>'
+        +'</div>';
+      // Retry after 2s
+      setTimeout(function(){if(AGENTS&&AGENTS.length)renderUnifiedHome();},2000);
+    }
+    return;
+  }
+
   var d   = gd();
   var s   = d.settings||{};
   var now = new Date(Date.now()+3*60*60*1000); // Kuwait UTC+3
