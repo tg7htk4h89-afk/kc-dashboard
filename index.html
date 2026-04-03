@@ -2828,19 +2828,23 @@ function _applyRemote(remote){
   if(Array.isArray(remote.leaves)) { LEAVES=remote.leaves; }
   if(Array.isArray(remote.actlog)) { ACTLOG=remote.actlog; }
   if(Array.isArray(remote.attendance)){
-    // Dedup remote attendance by agent+date — Sheets may have duplicates from old appendRow path
-    // Keep the LAST entry for each agent+date (most recent save wins)
+    // Dedup: keep LAST entry per Agent+Date (last row in sheet wins)
+    // normDate() handles any date format GAS or n8n might return
     var attDedup={};
     remote.attendance.forEach(function(a){
-      attDedup[a.agent+'|'+a.date]=a; // overwrite keeps last
+      if(!a.agent) return;
+      var d=normDate(a.date);
+      if(!d) return;
+      a.date=d; // normalize to YYYY-MM-DD in place
+      attDedup[a.agent+'|'+d]=a;
     });
     var dedupedRemote=Object.values(attDedup);
-
-    // Keep local entries written in last 30s that aren't confirmed in remote yet
+    // Keep local entries written in last 30s not yet in remote
     var remoteKeys={};
     dedupedRemote.forEach(function(a){remoteKeys[a.agent+'|'+a.date]=true;});
     var localNew=ATT_LOG.filter(function(a){
-      if(remoteKeys[a.agent+'|'+a.date]) return false; // remote has it
+      var d=normDate(a.date);
+      if(remoteKeys[a.agent+'|'+d]) return false;
       try{return Date.now()-new Date(a.ts.replace(' ','T')).getTime()<30000;}catch(e){return false;}
     });
     ATT_LOG=dedupedRemote.concat(localNew);
@@ -5230,10 +5234,32 @@ function attGetAgents(){
 }
 
 // ── Get today’s ATT_LOG entry for an agent ───────────────────
+// ── Normalize any date value to YYYY-MM-DD Kuwait format ─────
+function normDate(v){
+  if(!v) return '';
+  var str=String(v).trim();
+  // Already YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  // ISO string "2026-04-04T..."
+  if(str.indexOf('T')>4){
+    try{return new Date(new Date(str).getTime()+10800000).toISOString().substring(0,10);}catch(e){}
+  }
+  // Google Sheets serial number (GAS sometimes returns these)
+  if(/^\d{5}$/.test(str)){
+    try{return new Date((parseInt(str)-25569)*86400000+10800000).toISOString().substring(0,10);}catch(e){}
+  }
+  // Long date string "Sat Apr 04 2026 00:00:00 GMT+0300..."
+  try{
+    var d=new Date(str);
+    if(!isNaN(d.getTime())) return new Date(d.getTime()+10800000).toISOString().substring(0,10);
+  }catch(e){}
+  return str.substring(0,10);
+}
+
 function attGetEntry(agentName){
-  var d=today();
+  var d=today(); // "2026-04-04"
   for(var i=ATT_LOG.length-1;i>=0;i--){
-    if(ATT_LOG[i].agent===agentName&&ATT_LOG[i].date===d) return ATT_LOG[i];
+    if(ATT_LOG[i].agent===agentName && normDate(ATT_LOG[i].date)===d) return ATT_LOG[i];
   }
   return null;
 }
@@ -5525,7 +5551,9 @@ function attSaveOne(agentId){
     ts:kuwaitISO()
   };
   // Update local ATT_LOG immediately (upsert by agent+date)
-  ATT_LOG=ATT_LOG.filter(function(e){return!(e.agent===agent.n&&e.date===today());});
+  var todayStr=today();
+  ATT_LOG=ATT_LOG.filter(function(e){return!(e.agent===agent.n&&normDate(e.date)===todayStr);});
+  entry.date=todayStr; // ensure stored as clean YYYY-MM-DD
   ATT_LOG.push(entry);
 
   // ── Send to backend ──
